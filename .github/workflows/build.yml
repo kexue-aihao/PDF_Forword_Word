@@ -1,0 +1,203 @@
+name: Build, Package & Release
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v1.0.1)'
+        required: false
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  PROJECT_PATH: src/PdfWordStudio/PdfWordStudio.csproj
+  CONFIGURATION: Release
+
+jobs:
+  # =============================================
+  #   Stage 1: Build & Publish (x64 + x86)
+  # =============================================
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        platform: [x64, x86]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore NuGet packages
+        run: dotnet restore ${{ env.PROJECT_PATH }}
+
+      - name: Build & Publish (${{ matrix.platform }})
+        run: |
+          dotnet publish ${{ env.PROJECT_PATH }} `
+            -c ${{ env.CONFIGURATION }} `
+            -r win-${{ matrix.platform }} `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o build/win-${{ matrix.platform }}
+
+      - name: Smoke test (verify EXE exists and runs)
+        shell: pwsh
+        run: |
+          $exe = "build/win-${{ matrix.platform }}/PdfWordStudio.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Build output not found: $exe"
+          }
+          $fileInfo = Get-Item $exe
+          Write-Output "✅ $exe : $([math]::Round($fileInfo.Length / 1MB, 1)) MB"
+          # Quick validation - start and kill
+          $proc = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 3
+          if (-not $proc.HasExited) {
+            $proc.Kill()
+            Write-Output "✅ App starts and runs correctly"
+          }
+
+      - name: Upload artifacts (${{ matrix.platform }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-win-${{ matrix.platform }}
+          path: build/win-${{ matrix.platform }}/
+          retention-days: 3
+
+  # =============================================
+  #   Stage 2: Build Installer
+  # =============================================
+  installer:
+    name: Build Installer
+    needs: build
+    runs-on: windows-latest
+    # Only build installer for tags and workflow_dispatch, not for PRs
+    if: >
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout (for installer scripts)
+        uses: actions/checkout@v4
+
+      - name: Download x64 build
+        uses: actions/download-artifact@v4
+        with:
+          name: build-win-x64
+          path: build/win-x64
+
+      - name: Download x86 build
+        uses: actions/download-artifact@v4
+        with:
+          name: build-win-x86
+          path: build/win-x86
+
+      - name: Install Inno Setup (chocolatey)
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            throw "ISCC not found after installation"
+          }
+          Write-Output "✅ Inno Setup installed: $($iscc.Source)"
+
+      - name: Build Installer with ISCC
+        shell: cmd
+        run: |
+          "C:\ProgramData\chocolatey\lib\innosetup\tools\ISCC.exe" installer\PdfWordStudio.iss
+
+      - name: Verify Installer
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem installer\Output\*.exe | Select-Object -First 1
+          if (-not $setup) {
+            throw "Installer not found in installer\Output\"
+          }
+          $size = [math]::Round($setup.Length / 1MB, 1)
+          Write-Output "✅ Installer: $($setup.Name) ($size MB)"
+
+      - name: Upload Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: installer/Output/
+          retention-days: 90
+
+  # =============================================
+  #   Stage 3: Create GitHub Release
+  # =============================================
+  release:
+    name: Create Release
+    needs: installer
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Installer
+        uses: actions/download-artifact@v4
+        with:
+          name: installer
+          path: release-assets
+
+      - name: Generate Release Notes
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $notes = @"
+          ## 📄 PDF 转 Word $version
+
+          ### ✨ 更新内容
+          - 请在此处填写本次发布的更新内容
+
+          ### 📦 下载
+          - 下载安装包后运行 `PdfWordStudio_Setup_$version.exe`
+          - 支持 Windows 10/11 (x86/x64)
+
+          ### ⚙️ 系统要求
+          - Windows 10 (1809+) 或 Windows 11
+          - 无需安装 .NET 运行时（自包含发布）
+          - 无需 Microsoft Office
+          "@
+          $notes | Out-File -FilePath release-notes.md -Encoding UTF8
+
+      - name: Get Installer Path
+        id: assets
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem release-assets\*.exe | Select-Object -First 1
+          Write-Output "path=$($setup.FullName)" >> $env:GITHUB_OUTPUT
+          Write-Output "name=$($setup.Name)" >> $env:GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: PDF 转 Word ${{ github.ref_name }}
+          body_path: release-notes.md
+          draft: true
+          prerelease: false
+          files: |
+            ${{ steps.assets.outputs.path }}
+          fail_on_unmatched_files: true
+
+      - name: Summary
+        run: |
+          echo "✅ Release ${{ github.ref_name }} created (draft)"
+          echo "   Installer: ${{ steps.assets.outputs.name }}"

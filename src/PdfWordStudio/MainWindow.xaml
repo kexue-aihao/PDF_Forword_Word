@@ -1,0 +1,280 @@
+<Window x:Class="PdfWordStudio.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:PdfWordStudio.ViewModels"
+        xmlns:c="clr-namespace:PdfWordStudio.Converters"
+        Title="PDF 转 Word"
+        Width="820" Height="620"
+        MinWidth="720" MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        Background="#F0F2F5">
+    <Window.DataContext>
+        <vm:MainWindowViewModel/>
+    </Window.DataContext>
+
+    <Window.Resources>
+        <c:TaskStateToIconConverter x:Key="StateToIcon"/>
+        <c:TaskStateToColorConverter x:Key="StateToColor"/>
+        <c:BoolToVisibilityConverter x:Key="BoolToVis"/>
+        <c:InverseBoolConverter x:Key="InverseBool"/>
+    </Window.Resources>
+
+    <Border CornerRadius="10" Background="#F0F2F5">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="48"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- ===== 自定义标题栏 ===== -->
+            <Border Grid.Row="0" Background="White" CornerRadius="10,10,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
+                        <Border Width="28" Height="28" CornerRadius="6" Background="#2563EB">
+                            <TextBlock Text="P" FontSize="16" FontWeight="Bold"
+                                       Foreground="White" HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="PDF 转 Word" FontSize="15" FontWeight="SemiBold"
+                                   Foreground="#1F2937" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button x:Name="MinimizeBtn" Style="{StaticResource IconButton}" Click="MinimizeBtn_Click">
+                            <TextBlock Text="─" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        </Button>
+                        <Button x:Name="MaximizeBtn" Style="{StaticResource IconButton}" Click="MaximizeBtn_Click">
+                            <TextBlock x:Name="MaxIcon" Text="□" FontSize="12" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        </Button>
+                        <Button x:Name="CloseBtn" Style="{StaticResource IconButton}" Click="CloseBtn_Click" Width="46">
+                            <TextBlock Text="✕" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Rectangle Grid.Row="0" Fill="Transparent" MouseDown="TitleBar_MouseDown"
+                       VerticalAlignment="Stretch" Margin="50,0,120,0"/>
+
+            <!-- ===== 主内容 ===== -->
+            <Grid Grid.Row="1" Margin="20,0,20,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 空状态拖拽区 / 文件信息栏 -->
+                    <Border Grid.Row="0" Margin="0,0,0,12">
+                        <Grid>
+                            <!-- 无文件时显示 -->
+                            <Border x:Name="DropBorder"
+                                    Visibility="{Binding HasFiles, Converter={StaticResource InverseBool}}"
+                                    Background="White" BorderBrush="#D1D5DB" BorderThickness="2"
+                                    CornerRadius="12" AllowDrop="True" Padding="0,30"
+                                    DragOver="DropZone_DragOver" DragLeave="DropZone_DragLeave"
+                                    Drop="DropZone_Drop" Height="160">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Border Width="64" Height="64" CornerRadius="32"
+                                            Background="#EFF6FF" Margin="0,0,0,12"
+                                            HorizontalAlignment="Center">
+                                        <TextBlock Text="📄" FontSize="28"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <TextBlock Text="拖拽 PDF 文件到此处" FontSize="16"
+                                               Foreground="#374151" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="或" FontSize="13" Foreground="#9CA3AF"
+                                               HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                                    <Button Content="选择 PDF 文件" Style="{StaticResource PrimaryButton}"
+                                            Command="{Binding AddFilesCommand}"
+                                            Width="160" Margin="0,10,0,0" Height="36"/>
+                                    <TextBlock Text="支持批量转换，单个文件最大 500 MB" FontSize="11"
+                                               Foreground="#9CA3AF" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- 有文件时显示 -->
+                            <Border Visibility="{Binding HasFiles, Converter={StaticResource BoolToVis}}"
+                                    Background="White" CornerRadius="10" Padding="16,12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Width="32" Height="32" CornerRadius="8" Background="#EFF6FF">
+                                        <TextBlock Text="📋" FontSize="16" HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"/>
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding TotalFileCount, StringFormat='共 {0} 个文件'}"
+                                                   FontSize="14" FontWeight="SemiBold" Foreground="#1F2937"/>
+                                        <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                                   Foreground="#6B7280" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                        <Button Content="添加文件" Style="{StaticResource SecondaryButton}"
+                                                Command="{Binding AddFilesCommand}" Height="32" Padding="12,0"
+                                                FontSize="12"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <!-- 文件列表 -->
+                    <Border Grid.Row="1" Background="White" CornerRadius="10"
+                            Visibility="{Binding HasFiles, Converter={StaticResource BoolToVis}}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Grid.Row="0" Padding="16,10" Background="#F9FAFB" CornerRadius="10,10,0,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="80"/>
+                                        <ColumnDefinition Width="60"/>
+                                        <ColumnDefinition Width="160"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="" FontSize="12" Foreground="#6B7280"/>
+                                    <TextBlock Grid.Column="1" Text="文件名" FontSize="12"
+                                               Foreground="#6B7280" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="大小" FontSize="12"
+                                               Foreground="#6B7280" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="3" Text="状态" FontSize="12"
+                                               Foreground="#6B7280" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="4" Text="进度" FontSize="12"
+                                               Foreground="#6B7280" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Border>
+
+                            <ListView x:Name="FileListView" Grid.Row="1"
+                                      ItemsSource="{Binding ConversionTasks}"
+                                      BorderThickness="0" Background="Transparent"
+                                      Margin="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border CornerRadius="6" Padding="8,6">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="Transparent"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                            <Setter Property="Background" Value="#EFF6FF"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="40"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="80"/>
+                                                    <ColumnDefinition Width="60"/>
+                                                    <ColumnDefinition Width="160"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <CheckBox Grid.Column="0" Style="{StaticResource ModernCheckBox}"
+                                                          IsChecked="{Binding IsSelected}"/>
+
+                                                <StackPanel Grid.Column="1" Orientation="Vertical" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding SourceFileName}" FontSize="13"
+                                                               Foreground="#1F2937" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Text="{Binding SourceFilePath}" FontSize="10"
+                                                               Foreground="#9CA3AF" TextTrimming="CharacterEllipsis"/>
+                                                </StackPanel>
+
+                                                <TextBlock Grid.Column="2" Text="{Binding FileSize}" FontSize="12"
+                                                           Foreground="#6B7280" VerticalAlignment="Center"/>
+
+                                                <Border Grid.Column="3" Width="28" Height="28" CornerRadius="14"
+                                                        Background="{Binding State, Converter={StaticResource StateToColor}}"
+                                                        VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding State, Converter={StaticResource StateToIcon}}"
+                                                               FontSize="14" HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center" Foreground="White"/>
+                                                </Border>
+
+                                                <StackPanel Grid.Column="4" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding StatusMessage}" FontSize="11"
+                                                               Foreground="#6B7280" TextTrimming="CharacterEllipsis"/>
+                                                    <ProgressBar Value="{Binding Progress}" Height="3" Margin="0,4,0,0"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Grid>
+
+            <!-- ===== 底部栏 ===== -->
+            <Border Grid.Row="2" Background="White" CornerRadius="0,0,10,10" Padding="16,10,16,14">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Button Grid.Column="0" Content="➕ 添加文件" Style="{StaticResource SecondaryButton}"
+                            Command="{Binding AddFilesCommand}" Height="34" Padding="14,0"
+                            FontSize="12"/>
+
+                    <Button Grid.Column="1" Content="🗑 移除选中" Style="{StaticResource SecondaryButton}"
+                            Command="{Binding RemoveSelectedCommand}" Height="34" Padding="14,0"
+                            FontSize="12" Margin="8,0,0,0"/>
+
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="📂" FontSize="14" VerticalAlignment="Center"/>
+                        <TextBlock Text="输出：" FontSize="12" Foreground="#6B7280" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                        <Button Style="{StaticResource IconButton}" Command="{Binding SelectOutputDirectoryCommand}"
+                                Width="Auto" Height="Auto" Padding="4,0" FontSize="12">
+                            <TextBlock Foreground="#2563EB" TextDecorations="Underline"
+                                       TextTrimming="CharacterEllipsis" MaxWidth="140">
+                                <TextBlock.Text>
+                                    <Binding Path="OutputDirectory" FallbackValue="源文件目录"/>
+                                </TextBlock.Text>
+                            </TextBlock>
+                        </Button>
+                    </StackPanel>
+
+                    <Border Grid.Column="4" Padding="8,0" VerticalAlignment="Center"
+                            Background="#F0F2F5" CornerRadius="6" Height="28"
+                            Visibility="{Binding HasFiles, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding SuccessCount, StringFormat='✅ {0}'}" FontSize="11"
+                                       Foreground="#10B981" Margin="0,0,8,0"/>
+                            <TextBlock Text="{Binding FailedCount, StringFormat='❌ {0}'}" FontSize="11"
+                                       Foreground="#EF4444"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Button Grid.Column="5" Content="开始转换" Style="{StaticResource PrimaryButton}"
+                            Command="{Binding StartConversionCommand}"
+                            Height="38" Padding="32,0" FontSize="14"/>
+                </Grid>
+            </Border>
+
+            <ProgressBar Grid.Row="2" Value="{Binding OverallProgress}" Height="3"
+                         VerticalAlignment="Top" Margin="0,-1,0,0"
+                         Visibility="{Binding IsConverting, Converter={StaticResource BoolToVis}}"/>
+        </Grid>
+    </Border>
+</Window>
